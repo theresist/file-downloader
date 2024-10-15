@@ -35,27 +35,45 @@ def download_image(query, download_dir):
     # Get the URL of the first image
     image_url = data['items'][0]['link']
 
-    # Extract the file extension from the image URL
-    file_extension = os.path.splitext(image_url)[-1]
-    if not file_extension:
-        print(f"Could not determine the file extension for the image URL: {image_url}")
+    # Request the image and check the Content-Type header to determine the file extension
+    image_response = requests.get(image_url, stream=True)
+    if image_response.status_code != 200:
+        print(f"Failed to download the image from URL: {image_url}")
         return None
 
+    content_type = image_response.headers.get('Content-Type')
+    if not content_type:
+        print(f"Could not determine the content type for the image URL: {image_url}")
+        return None
+
+    # Determine the file extension based on the content type
+    if 'image/jpeg' in content_type:
+        file_extension = '.jpg'
+    elif 'image/png' in content_type:
+        file_extension = '.png'
+    elif 'image/gif' in content_type:
+        file_extension = '.gif'
+    elif 'image/jfif' in content_type:
+        file_extension = '.jfif'
+    else:
+        file_extension = '.jpg'  # Default to .jpg if the content type is not recognized
+
     # Define the path for saving the image, using the correct extension
-    download_path = os.path.join(download_dir, f"{query}{file_extension}")
+    image_name = f"{query}{file_extension}"
+    download_path = os.path.join(download_dir, image_name)
 
     # Check if the download directory exists, and create it if necessary
     if not os.path.exists(download_dir):
         os.makedirs(download_dir)
 
-    # Download and save the image
+    # Save the image
     try:
-        img_data = requests.get(image_url).content
         with open(download_path, 'wb') as img_file:
-            img_file.write(img_data)
+            for chunk in image_response.iter_content(chunk_size=128):
+                img_file.write(chunk)
         return download_path
     except Exception as e:
-        print(f"Failed to download the image: {str(e)}")
+        print(f"Failed to save the image: {str(e)}")
         return None
 
 # Command to start the bot
@@ -71,8 +89,8 @@ async def handle_message(update: Update, context: CallbackContext):
     download_dir = "/tmp"
 
     try:
-        # Download the image
-        downloaded_image = download_image(text, download_dir)
+        # Download the image with the query as the name
+        downloaded_image = download_image(text.strip(), download_dir)
         if downloaded_image:
             # Send the image back to the user
             await update.message.reply_photo(photo=open(downloaded_image, 'rb'))
